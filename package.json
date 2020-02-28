@@ -1,0 +1,21 @@
+{
+  "name": "tokenr",
+  "version": "3.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "build": "lasso --main src/client.js --plugins lasso-marko --inject-into www/index.html"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "GPL",
+  "dependencies": {
+    "lasso": "^3.3.1",
+    "lasso-marko": "^2.4.8",
+    "marko": "^4.18.46"
+  },
+  "devDependencies": {
+    "lasso-cli": "^2.0.11"
+  }
+}
