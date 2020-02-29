@@ -36,6 +36,23 @@ class {
   focusLayer(uuid) {
     this.state.selectedUUID = uuid
   }
+  setProperty(target, property, value) {
+    if (target[property] === undefined) return
+    if (value.target) value = value.target.value
+    target[property] = value
+    this.forceUpdate()
+  }
+  loadImageFile(layer, e) {
+    if (!e.target.files || !e.target.files[0]) return
+    let reader = new FileReader()
+
+    reader.addEventListener('load', e => {
+      layer.imageDataURL = e.target.result
+      layer.image.src = layer.imageDataURL
+    })
+
+    reader.readAsDataURL(e.target.files[0])
+  }
   findUUID(uuid, target=this.state) {
     let targetIndex = 0
     for (let i = 0; i < target.layers.length; i++) {
@@ -60,8 +77,14 @@ class {
     let image = {
       type: 'image',
       uuid: this.UUID(),
-      operation: 'source-over'
+      operation: 'source-over',
+      imageURL: '',
+      imageDataURL: '',
+      image: new Image(),
     }
+    image.image.addEventListener('load', () => {
+      this.forceUpdate()
+    })
     return image
   }
   createCircleLayer() {
@@ -69,7 +92,7 @@ class {
       type: 'circle',
       uuid: this.UUID(),
       radius: 256,
-      color: [255, 255, 0, 255],
+      color: '#000000',
       operation: 'source-over'
     }
     return circle
@@ -78,8 +101,10 @@ class {
     let fill = {
       type: 'fill',
       uuid: this.UUID(),
-      startColor: [0, 0, 0, 255],
-      endColor: [0, 0, 0, 255],
+      startColor: '#000000',
+      startAlpha: 1.0,
+      endColor: '#000000',
+      endAlpha: 1.0,
       angle: 0,
       operation: 'source-over',
     }
@@ -128,11 +153,16 @@ class {
     ctx.restore()
   }
   renderImageLayer(ctx, layer) {
+    if (!layer.imageDataURL) return
+
+    ctx.globalCompositeOperation = layer.operation
+
+    ctx.drawImage(layer.image, 0, 0)
   }
   renderCircleLayer(ctx, layer) {
     ctx.globalCompositeOperation = layer.operation
     ctx.translate(layer.radius, layer.radius)
-    ctx.fillStyle = `rgba(${layer.color[0]}, ${layer.color[1]}, ${layer.color[2]}, ${layer.color[3]})`
+    ctx.fillStyle = layer.color
 
     ctx.beginPath()
     ctx.arc(0, 0, layer.radius, 0, 2 * Math.PI)
@@ -141,8 +171,8 @@ class {
   renderFillLayer(ctx, layer) {
     ctx.globalCompositeOperation = layer.operation
     let gradient = ctx.createLinearGradient(0, 0, 0, this.state.height)
-    gradient.addColorStop(0, `rgba(${layer.startColor[0]}, ${layer.startColor[1]}, ${layer.startColor[2]}, ${layer.startColor[3]})`)
-    gradient.addColorStop(1, `rgba(${layer.endColor[0]}, ${layer.endColor[1]}, ${layer.endColor[2]}, ${layer.endColor[3]})`)
+    gradient.addColorStop(0, layer.startColor)
+    gradient.addColorStop(1, layer.endColor)
 
     ctx.fillStyle = gradient
     ctx.fillRect(0, 0, this.state.width, this.state.height)
@@ -184,6 +214,11 @@ style {
   .AppTokenr__Controls__Layers__Layer.-selected {
     border: 3px solid yellow;
   }
+  .AppTokenr__Controls__Layers__Layer {
+    display: grid;
+    grid-template-rows: minmax(0, 1fr) minmax(0, 1fr) minmax(0, auto);
+    grid-template-columns: minmax(0, 1fr);
+  }
   .AppTokenr__View {
     position: relative;
     grid-area: AppTokenr__View;
@@ -204,10 +239,34 @@ style {
 }
 
 macro|{ layer }| name='AppTokenrControlsLayersLayer'
-  div.AppTokenr__Controls__Layers__Layer on-click('focusLayer', layer.uuid) class={'-selected': state.selectedUUID === layer.uuid} -- ${layer.type}
-  if(layer.layers)
-    for|childLayer| of=layer.layers
-      AppTokenrControlsLayersLayer layer=childLayer
+  div.AppTokenr__Controls__Layers__Layer on-click('focusLayer', layer.uuid) class={'-selected': state.selectedUUID === layer.uuid}
+    div.AppTokenr__Controls__Layers__Layer__Name -- ${layer.type}
+    div.AppTokenr__Controls__Layers__Layer__Configuration
+    if(layer.type === 'circle')
+      label
+        span -- radius
+        input type='number' value=layer.radius on-change('setProperty', layer, 'radius')
+      label
+        span -- color
+        input type='color' value=layer.color on-change('setProperty', layer, 'color')
+    else-if(layer.type === 'fill')
+      label
+        span -- start color
+        input type='color' value=layer.startColor on-change('setProperty', layer, 'startColor')
+      label
+        span -- end color
+        input type='color' value=layer.endColor on-change('setProperty', layer, 'endColor')
+    else-if(layer.type === 'image')
+      label
+        span -- image
+        input type='file' value=layer.imageURL on-change('loadImageFile', layer)
+    label
+      span -- clip
+      input value=layer.operation list='clip-mode' on-change('setProperty', layer, 'operation')
+    if(layer.layers)
+      div.AppTokenr__Controls__Layers__Layer__Layers
+        for|childLayer| of=layer.layers
+          AppTokenrControlsLayersLayer layer=childLayer
 div.AppTokenr
   div.App__Menu
     div.App__Menu__Item -- import
@@ -219,6 +278,9 @@ div.AppTokenr
       div.AppTokenr__Controls__Buttons__Button on-click('addLayer', 'fill') -- fill
       div.AppTokenr__Controls__Buttons__Button on-click('addLayer', 'group') -- group
     div.AppTokenr__Controls__Layers
+      datalist id='clip-mode'
+        option value='source-in'
+        option value='source-over'
       for|layer| of=state.layers
         AppTokenrControlsLayersLayer layer=layer
   div.AppTokenr__View
