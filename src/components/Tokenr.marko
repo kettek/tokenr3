@@ -4,8 +4,148 @@ class {
       width: 512,
       height: 512,
       layers: [],
+      selectedUUID: null,
     }
     // TODO: Create offscreen canvas and render canvas.
+  }
+  onRender() {
+    this.render()
+  }
+  addLayer(type) {
+    let target = this.findUUID(this.state.selectedUUID)
+    console.log(target)
+    if (!target || !target.layers) {
+      target = this.state
+    }
+    switch(type) {
+      case 'image':
+        target.layers.push(this.createImageLayer())
+      break;
+      case 'circle':
+        target.layers.push(this.createCircleLayer())
+      break;
+      case 'fill':
+        target.layers.push(this.createFillLayer())
+      break;
+      case 'group':
+        target.layers.push(this.createGroupLayer())
+      break;
+    }
+    this.forceUpdate()
+  }
+  focusLayer(uuid) {
+    this.state.selectedUUID = uuid
+  }
+  findUUID(uuid, target=this.state) {
+    let targetIndex = 0
+    for (let i = 0; i < target.layers.length; i++) {
+      if (target.layers[i].uuid === uuid) return target.layers[i]
+      if (target.layers[i].layers) {
+        let check = this.findUUID(uuid, target.layers[i])
+        if (check) return check
+      }
+    }
+    return null
+  }
+  createGroupLayer() {
+    let group = {
+      type: 'group',
+      uuid: this.UUID(),
+      layers: [],
+      operation: 'source-over'
+    }
+    return group
+  }
+  createImageLayer() {
+    let image = {
+      type: 'image',
+      uuid: this.UUID(),
+      operation: 'source-over'
+    }
+    return image
+  }
+  createCircleLayer() {
+    let circle = {
+      type: 'circle',
+      uuid: this.UUID(),
+      radius: 256,
+      color: [255, 255, 0, 255],
+      operation: 'source-over'
+    }
+    return circle
+  }
+  createFillLayer() {
+    let fill = {
+      type: 'fill',
+      uuid: this.UUID(),
+      startColor: [0, 0, 0, 255],
+      endColor: [0, 0, 0, 255],
+      angle: 0,
+      operation: 'source-over',
+    }
+    return fill
+  }
+  UUID() {
+    return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
+      (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
+    )
+  }
+  render() {
+    if (!this.getEl('DisplayCanvas')) return
+    // Resize as needed.
+    let c = this.getEl('DisplayCanvas')
+    c.width = c.offsetWidth, c.height = c.offsetHeight
+
+    let ctx = this.getEl('DisplayCanvas').getContext('2d')
+    let octx = this.getEl('OffscreenCanvas').getContext('2d')
+    let rctx = this.getEl('RenderCanvas').getContext('2d')
+
+    octx.clearRect(0, 0, this.state.width, this.state.height)
+    for (let i = 0; i < this.state.layers.length; i++) {
+      this.renderLayer(octx, this.state.layers[i])
+    }
+    ctx.drawImage(this.getEl('OffscreenCanvas'), 0, 0, this.state.width, this.state.height)
+  }
+  renderLayer(ctx, layer) {
+    ctx.save()
+    switch(layer.type) {
+      case 'group':
+        // TODO: probably make new offscreen canvas and use that(?)
+        for (let i = 0; i < layer.layers.length; i++) {
+          this.renderLayer(ctx, layer.layers[i])
+        }
+        break;
+      case 'image':
+        this.renderImageLayer(ctx, layer)
+        break;
+      case 'circle':
+        this.renderCircleLayer(ctx, layer)
+        break;
+      case 'fill':
+        this.renderFillLayer(ctx, layer)
+        break;
+    }
+    ctx.restore()
+  }
+  renderImageLayer(ctx, layer) {
+  }
+  renderCircleLayer(ctx, layer) {
+    ctx.globalCompositeOperation = layer.operation
+    ctx.translate(layer.radius, layer.radius)
+    ctx.fillStyle = `rgba(${layer.color[0]}, ${layer.color[1]}, ${layer.color[2]}, ${layer.color[3]})`
+
+    ctx.beginPath()
+    ctx.arc(0, 0, layer.radius, 0, 2 * Math.PI)
+    ctx.fill()
+  }
+  renderFillLayer(ctx, layer) {
+    ctx.globalCompositeOperation = layer.operation
+    let gradient = ctx.createLinearGradient(0, 0, 0, this.state.height)
+    gradient.addColorStop(0, `rgba(${layer.startColor[0]}, ${layer.startColor[1]}, ${layer.startColor[2]}, ${layer.startColor[3]})`)
+    gradient.addColorStop(1, `rgba(${layer.endColor[0]}, ${layer.endColor[1]}, ${layer.endColor[2]}, ${layer.endColor[3]})`)
+
+    ctx.fillStyle = gradient
+    ctx.fillRect(0, 0, this.state.width, this.state.height)
   }
 }
 
@@ -19,8 +159,8 @@ style {
     font-size: 1em;
     grid-template-areas: "App__Menu App__Menu"
                          "AppTokenr__Controls AppTokenr__View";
-    grid-template-rows: auto 1fr;
-    grid-template-columns: 1fr 4fr;
+    grid-template-rows: auto minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 4fr);
   }
   .App__Menu {
     grid-area: App__Menu;
@@ -34,6 +174,15 @@ style {
   }
   .AppTokenr__Controls {
     grid-area: AppTokenr__Controls;
+    display: grid;
+    grid-template-rows: minmax(0, auto) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .AppTokenr__Controls__Layers {
+    overflow: auto;
+  }
+  .AppTokenr__Controls__Layers__Layer.-selected {
+    border: 3px solid yellow;
   }
   .AppTokenr__View {
     position: relative;
@@ -49,14 +198,31 @@ style {
     height: 100%;
     background: black;
   }
+  .-hidden {
+    display: none;
+  }
 }
 
+macro|{ layer }| name='AppTokenrControlsLayersLayer'
+  div.AppTokenr__Controls__Layers__Layer on-click('focusLayer', layer.uuid) class={'-selected': state.selectedUUID === layer.uuid} -- ${layer.type}
+  if(layer.layers)
+    for|childLayer| of=layer.layers
+      AppTokenrControlsLayersLayer layer=childLayer
 div.AppTokenr
   div.App__Menu
     div.App__Menu__Item -- import
     div.App__Menu__Item -- export
-  div.AppTokenr__Controls -- controls
-    div.AppTokenr__Controls__Layers -- layers
+  div.AppTokenr__Controls
+    div.AppTokenr__Controls__Buttons
+      div.AppTokenr__Controls__Buttons__Button on-click('addLayer', 'image') -- img
+      div.AppTokenr__Controls__Buttons__Button on-click('addLayer', 'circle') -- circle
+      div.AppTokenr__Controls__Buttons__Button on-click('addLayer', 'fill') -- fill
+      div.AppTokenr__Controls__Buttons__Button on-click('addLayer', 'group') -- group
+    div.AppTokenr__Controls__Layers
+      for|layer| of=state.layers
+        AppTokenrControlsLayersLayer layer=layer
   div.AppTokenr__View
+    canvas.AppTokenr__View__Canvas key='DisplayCanvas'
+    canvas.AppTokenr__View__Canvas.-hidden style={width: state.width, height: state.height} width=state.width height=state.height key='RenderCanvas'
+    canvas.AppTokenr__View__Canvas.-hidden style={width: state.width, height: state.height} width=state.width height=state.height key='OffscreenCanvas'
     canvas.AppTokenr__View__Background
-    canvas.AppTokenr__View__Canvas
